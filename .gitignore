@@ -1,0 +1,4 @@
+debug_build.*
+debug_build
+*.exe
+.env
