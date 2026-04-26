@@ -23,7 +23,15 @@ Direction :: enum {
 	UP,
 }
 
-GameState :: struct {
+GameState :: enum {
+	INITIALIZING,
+	RUNNING,
+	PAUSED,
+	GAME_OVER,
+}
+
+GameData :: struct {
+	state:      GameState,
 	snake:      Snake,
 	food_pos:   rl.Vector2,
 	head_index: int,
@@ -31,7 +39,7 @@ GameState :: struct {
 	high_score: i32,
 	speed:      f32,
 	chomp:      rl.Sound,
-	paused:     bool,
+	timer:      f32,
 }
 
 Snake :: struct {
@@ -48,26 +56,26 @@ main :: proc() {
 	defer rl.CloseAudioDevice()
 
 	// Load chomp sound
-	chomp_sound := rl.LoadSound("assets/chomp.wav")
+	chomp_sound := rl.LoadSound("snake/assets/chomp.wav")
 	defer rl.UnloadSound(chomp_sound)
 
-	game := GameState {
+	game := GameData {
 		speed      = 0.3,
 		snake      = make_snake(3),
 		head_index = 0,
 		score      = 0,
 		chomp      = chomp_sound,
-		paused     = true,
+		state      = .INITIALIZING,
+		timer      = 0.0,
 	}
 
 	// Spawn food
 	game.food_pos = spawn_food(&game.snake)
 
-	timer: f32 = 0.0
 
 	for !rl.WindowShouldClose() {
 		// Increment the timer
-		timer += rl.GetFrameTime()
+		game.timer += rl.GetFrameTime()
 
 		// DRAW
 		rl.BeginDrawing()
@@ -76,14 +84,8 @@ main :: proc() {
 		rl.ClearBackground(rl.RAYWHITE)
 
 		// Draw score
-		rl.DrawText(rl.TextFormat("Score: %d", game.score), WINDOW_SIZE - 100, 10, 20, rl.RED)
-		rl.DrawText(
-			rl.TextFormat("High Score: %d", game.high_score),
-			WINDOW_SIZE - 150,
-			40,
-			20,
-			rl.GREEN,
-		)
+		draw_score_text(rl.TextFormat("High Score: %d", game.high_score), rl.GREEN, 10)
+		draw_score_text(rl.TextFormat("Score: %d", game.score), rl.BLACK, 50)
 
 		// Draw snake segments
 		for segment in game.snake.segments {
@@ -99,24 +101,53 @@ main :: proc() {
 			rl.GREEN,
 		)
 
-		if game.paused {
-			rl.DrawText("Paused", WINDOW_SIZE / 2 - 50, WINDOW_SIZE / 2 - 20, 40, rl.RED)
-
-			if rl.IsKeyPressed(.SPACE) {
-				game.paused = false
-			}
+		// We should suspend the game if it's not running
+		if game.state != .RUNNING {
+			suspend_game(&game)
 
 			// Skip the rest of the loop and wait for unpause
+			continue
+		}
+
+		// Pause the game
+		if rl.IsKeyPressed(.SPACE) {
+			game.state = .PAUSED
 			continue
 		}
 
 		update_direction(&game.snake)
 
 		// This is our game tick
-		if (timer >= game.speed) {
+		if (game.timer >= game.speed) {
 			update_snake(&game)
-			timer -= game.speed // reset timer
+			game.timer -= game.speed // reset timer
 		}
+	}
+}
+
+suspend_game :: proc(game: ^GameData) {
+	switch game.state {
+	case .INITIALIZING:
+		draw_center_text("Press the space key to start...", rl.RED)
+		if rl.IsKeyPressed(.SPACE) {
+			game.state = .RUNNING
+			game.timer = 0.0 // reset timer
+		}
+	case .PAUSED:
+		draw_center_text("Press the space key to resume...", rl.RED)
+		if rl.IsKeyPressed(.SPACE) {
+			game.state = .RUNNING
+			game.timer = 0.0 // reset timer
+		}
+	case .GAME_OVER:
+		draw_center_text("Game Over", rl.RED)
+		draw_center_text("Press SPACE to play again...", rl.RED)
+		if rl.IsKeyPressed(.SPACE) {
+			game.state = .RUNNING
+			game.timer = 0.0 // reset timer
+		}
+	case .RUNNING:
+	// We should never hit this case
 	}
 }
 
@@ -144,28 +175,28 @@ spawn_food :: proc(snake: ^Snake) -> rl.Vector2 {
 	}
 }
 
-reset_game :: proc(state: ^GameState) {
+reset_game :: proc(data: ^GameData) {
 	// Update high score if necessary
-	if state.score > state.high_score {
-		state.high_score = state.score
+	if data.score > data.high_score {
+		data.high_score = data.score
 	}
 
-	state.score = 0
-	state.speed = 0.3
-	state.head_index = 0
+	data.score = 0
+	data.speed = 0.3
+	data.head_index = 0
 
 	// Clear memory for segments and make new snake
-	delete(state.snake.segments)
-	state.snake = make_snake(3)
+	delete(data.snake.segments)
+	data.snake = make_snake(3)
 
 	// reset food position
-	state.food_pos = spawn_food(&state.snake)
+	data.food_pos = spawn_food(&data.snake)
 
 	// pause the game
-	state.paused = true
+	data.state = .GAME_OVER
 }
 
-update_snake :: proc(state: ^GameState) {
+update_snake :: proc(state: ^GameData) {
 	// Store old head location
 	old_head := state.snake.segments[state.head_index]
 
@@ -255,4 +286,14 @@ make_snake :: proc(num_segments: int) -> Snake {
 	snake.direction = .RIGHT
 
 	return snake
+}
+
+draw_score_text :: proc(text: cstring, color: rl.Color, yPos: i32) {
+	text_width := rl.MeasureText(text, 20)
+	rl.DrawText(text, WINDOW_SIZE - text_width - 20, yPos, 20, color)
+}
+
+draw_center_text :: proc(text: cstring, color: rl.Color) {
+	text_width := rl.MeasureText(text, 40)
+	rl.DrawText(text, WINDOW_SIZE / 2 - text_width / 2, WINDOW_SIZE / 2 - 20, 40, color)
 }
