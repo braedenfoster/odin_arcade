@@ -1,0 +1,17 @@
+[
+  {
+    "label": "Build Web",
+    "command": "odin run karl2d/build_web -- .",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+  },
+  {
+    "label": "Serve Web",
+    "command": "serve",
+    "args": ["-s", "bin/web"],
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+  },
+]
